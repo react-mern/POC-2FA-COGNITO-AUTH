@@ -11,13 +11,18 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { signUp } from '@/utils/authService';
+import {
+  signUp,
+} from '@/utils/authService';
 import { useNavigate } from 'react-router-dom';
-import { useToast } from '../ui/use-toast';
+import { useState } from 'react';
+import { useErrorHandler } from '@/utils/hooks/useErrorHandler';
+import SocialLogins from './SocialLogins';
 
-const SignupForm = () => {
+const SignupForm: React.FC = () => {
   const navigate = useNavigate();
-  const { toast } = useToast();
+
+  // Initialize form with Zod schema validation
   const form = useForm<z.infer<typeof signUpFormSchema>>({
     resolver: zodResolver(signUpFormSchema),
     defaultValues: {
@@ -27,27 +32,18 @@ const SignupForm = () => {
     },
   });
 
+  const [isSocialLoginInProgress, setIsSocialLoginInProgress] = useState(false);
   const { isSubmitting } = form.formState;
+  const handleError = useErrorHandler();
 
+  // Handle form submission
   const onSubmit = async (values: z.infer<typeof signUpFormSchema>) => {
     try {
-      const { email, password, confirmPassword } = values;
-      if (password !== confirmPassword) {
-        toast({
-          description: 'Password and confirm password does not match',
-          variant: 'destructive',
-        });
-        return;
-      }
+      const { email, password } = values;
       await signUp(email, password);
       navigate('/verify', { state: { email } });
     } catch (error) {
-      if (error instanceof Error) {
-        toast({
-          description: error.message,
-          variant: 'destructive',
-        });
-      }
+      handleError(error);
     }
   };
 
@@ -62,7 +58,6 @@ const SignupForm = () => {
               <FormControl>
                 <Input placeholder="Email" type="email" {...field} />
               </FormControl>
-
               <FormMessage />
             </FormItem>
           )}
@@ -75,7 +70,6 @@ const SignupForm = () => {
               <FormControl>
                 <Input placeholder="Password" type="password" {...field} />
               </FormControl>
-
               <FormMessage />
             </FormItem>
           )}
@@ -92,14 +86,23 @@ const SignupForm = () => {
                   {...field}
                 />
               </FormControl>
-
               <FormMessage />
             </FormItem>
           )}
         />
-        <Button type="submit" disabled={isSubmitting}>
-          Submit
+        <Button
+          type="submit"
+          disabled={isSubmitting || isSocialLoginInProgress}
+          className="w-full"
+        >
+          Sign Up
         </Button>
+
+        <SocialLogins
+          isSubmitting={isSubmitting}
+          isSocialLoginInProgress={isSocialLoginInProgress}
+          setIsSocialLoginInProgress={setIsSocialLoginInProgress}
+        />
       </form>
     </Form>
   );

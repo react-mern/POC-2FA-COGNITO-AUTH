@@ -12,14 +12,14 @@ import {
   AuthFlowType,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { awsConfig } from './awsConfig';
+import { jwtDecode } from 'jwt-decode';
 
-
-
-
+// Initialize Cognito client
 export const cognitoClient = new CognitoIdentityProviderClient({
   region: awsConfig.region,
 });
 
+// User sign-up function
 export const signUp = async (email: string, password: string) => {
   const params = {
     ClientId: awsConfig.clientId,
@@ -37,11 +37,11 @@ export const signUp = async (email: string, password: string) => {
     const response = await cognitoClient.send(command);
     return response;
   } catch (error) {
-    console.error('Error signing up: ', error);
     throw error;
   }
 };
 
+// Confirm sign-up function for verifying user's email
 export const confirmSignUp = async (username: string, code: string) => {
   const params = {
     ClientId: awsConfig.clientId,
@@ -54,11 +54,25 @@ export const confirmSignUp = async (username: string, code: string) => {
 
     return true;
   } catch (error) {
-    console.error('Error confirming sign up: ', error);
     throw error;
   }
 };
 
+// Resend verification code function
+export const resendVerificationCode = async (email: string) => {
+  const params = {
+    ClientId: awsConfig.clientId,
+    Username: email,
+  };
+  try {
+    const command = new ResendConfirmationCodeCommand(params);
+    await cognitoClient.send(command);
+  } catch (error) {
+    throw error;
+  }
+};
+
+// User sign-in function
 export const signIn = async (username: string, password: string) => {
   const params = {
     AuthFlow: 'USER_PASSWORD_AUTH' as AuthFlowType,
@@ -68,7 +82,6 @@ export const signIn = async (username: string, password: string) => {
       PASSWORD: password,
     },
   };
-  
 
   try {
     const command = new InitiateAuthCommand(params);
@@ -76,11 +89,10 @@ export const signIn = async (username: string, password: string) => {
     const { Session } = res;
 
     if (res.ChallengeName === 'SOFTWARE_TOKEN_MFA') {
-
       localStorage.setItem('session', Session || '');
       return { type: 'SOFTWARE_TOKEN_MFA' };
     } else if (Session) {
-      // MFA is required
+      // MFA setup is required
       const associateSoftwareTokenCommand = new AssociateSoftwareTokenCommand({
         Session: Session,
       });
@@ -98,11 +110,11 @@ export const signIn = async (username: string, password: string) => {
 
     throw new Error('Unexpected response from Cognito');
   } catch (error) {
-    console.error('Error signing in: ', error);
     throw error;
   }
 };
 
+// Verify TOTP function
 export const verifyTOTP = async (
   session: string,
   userCode: string,
@@ -113,6 +125,7 @@ export const verifyTOTP = async (
     let respondToAuthChallengeResponse;
 
     if (isMFAEnabled) {
+      // If MFA is enabled, respond to the MFA challenge
       const respondToAuthChallengeCommand = new RespondToAuthChallengeCommand({
         ChallengeName: 'SOFTWARE_TOKEN_MFA',
         ChallengeResponses: {
@@ -126,6 +139,7 @@ export const verifyTOTP = async (
         respondToAuthChallengeCommand
       );
     } else {
+      // If MFA is not enabled, verify the TOTP code
       const verifySoftwareTokenCommand = new VerifySoftwareTokenCommand({
         Session: session,
         UserCode: userCode,
@@ -155,6 +169,7 @@ export const verifyTOTP = async (
       localStorage.setItem('idToken', IdToken || '');
       localStorage.setItem('accessToken', AccessToken || '');
       localStorage.setItem('refreshToken', RefreshToken || '');
+      localStorage.setItem('provider', 'cognito');
 
       return {
         type: 'Success',
@@ -162,61 +177,130 @@ export const verifyTOTP = async (
       };
     }
   } catch (error) {
-    console.error('Error verifying TOTP: ', error);
     throw error;
   }
 };
 
+// User logout function
 export const logout = async () => {
   try {
     const accessToken = localStorage.getItem('accessToken');
+    const provider = localStorage.getItem('provider')!;
+
     if (!accessToken) {
-      return;
+      throw new Error('No access token found');
     }
-    const command = new GlobalSignOutCommand({
+
+    if (provider === 'microsoft' || provider === 'google') {
+      const cognitoLogoutUrl = `${awsConfig.cognitoDomain}/logout?client_id=${
+        awsConfig.clientId
+      }&logout_uri=${encodeURIComponent(awsConfig.logoutRedirectUri)}`;
+      window.location.href = cognitoLogoutUrl;
+    } else {
+      const command = new GlobalSignOutCommand({ AccessToken: accessToken });
+      await cognitoClient.send(command);
+      
+    }
+
+    localStorage.clear();
+  } catch (error) {
+    throw error;
+  }
+};
+
+// Get user function
+export const getUser = async () => {
+  const accessToken = localStorage.getItem('accessToken')!;
+  const provider = localStorage.getItem('provider')!;
+  const idToken = localStorage.getItem('idToken');
+
+  if (!accessToken || !idToken) {
+    throw new Error('No tokens found');
+  }
+
+  if (provider === 'microsoft' || provider === 'google') {
+    const decodedToken = jwtDecode(idToken) as any;
+    return decodedToken.email || decodedToken.preferred_username;
+  } else {
+    const userCommand = new GetUserCommand({
       AccessToken: accessToken,
     });
 
-    await cognitoClient.send(command);
-
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('idToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('session');
-    localStorage.removeItem('isAuthenticated');
-
-  } catch (error) {
-    console.error('Error during logout:', error);
+    const response = await cognitoClient.send(userCommand);
+    const emailAttribute = response.UserAttributes?.find(
+      (attribute) => attribute.Name === 'email'
+    );
+    return emailAttribute?.Value;
   }
 };
 
-export const getUser = async () => {
-  const accessToken = localStorage.getItem('accessToken')!;
+// Initiate login with Microsoft
+export const initiateLoginWithMicrosoft = () => {
+  localStorage.setItem('provider', 'microsoft');
+  const microsoftLoginUrl =
+    `${awsConfig.cognitoDomain}/oauth2/authorize?` +
+    `client_id=${awsConfig.clientId}&` +
+    `response_type=token&` +
+    `scope=openid email profile&` +
+    `redirect_uri=${encodeURIComponent(awsConfig.redirectUri)}&` +
+    `identity_provider=Microsoft`;
 
-  const userCommand = new GetUserCommand({
-    AccessToken: accessToken,
-  });
+  window.location.href = microsoftLoginUrl;
+};
 
-  const response = await cognitoClient.send(userCommand);
-  const emailAttribute = response.UserAttributes?.find(
-    (attribute) => attribute.Name === 'email'
-  );
-  if (emailAttribute) {
-    const email = emailAttribute.Value;
-    return email;
+// Initiate login with Google
+export const initiateLoginWithGoogle = () => {
+  localStorage.setItem('provider', 'google');
+  const googleLoginUrl =
+    `${awsConfig.cognitoDomain}/oauth2/authorize?` +
+    `client_id=${awsConfig.clientId}&` +
+    `response_type=token&` +
+    `scope=openid email profile&` +
+    `redirect_uri=${encodeURIComponent(awsConfig.redirectUri)}&` +
+    `identity_provider=Google`;
+
+  window.location.href = googleLoginUrl;
+};
+
+// Handle Microsoft callback
+export const handleMicrosoftCallback = () => {
+  const hash = window.location.hash.substr(1);
+  const result = hash.split('&').reduce((result: any, item) => {
+    const parts = item.split('=');
+    result[parts[0]] = parts[1];
+    return result;
+  }, {});
+
+  if (result.access_token && result.id_token) {
+    localStorage.setItem('accessToken', result.access_token);
+    localStorage.setItem('idToken', result.id_token);
+    return {
+      accessToken: result.access_token,
+      idToken: result.id_token,
+    };
+  } else {
+    throw new Error('Failed to get tokens from the callback URL');
   }
 };
 
-export const resendVerificationCode = async (email: string) => {
-  const params = {
-    ClientId: awsConfig.clientId,
-    Username: email,
-  };
-  try {
-    const command = new ResendConfirmationCodeCommand(params);
-     await cognitoClient.send(command);
-  } catch (error) {
-    console.error('Error signing in: ', error);
-    throw error;
+// Handle Google callback
+export const handleGoogleCallback = () => {
+  const hash = window.location.hash.substr(1);
+  const result = hash.split('&').reduce((result: any, item) => {
+    const parts = item.split('=');
+    result[parts[0]] = parts[1];
+    return result;
+  }, {});
+
+  if (result.access_token && result.id_token) {
+    localStorage.setItem('accessToken', result.access_token);
+    localStorage.setItem('idToken', result.id_token);
+
+    return {
+      accessToken: result.access_token,
+      idToken: result.id_token,
+    };
+  } else {
+    throw new Error('Failed to get tokens from the callback URL');
   }
 };

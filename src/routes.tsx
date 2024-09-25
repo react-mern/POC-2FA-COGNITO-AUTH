@@ -1,14 +1,19 @@
-import {
-  createBrowserRouter,
-  useLocation,
-} from 'react-router-dom';
-import Signup from './pages/Signup';
-import ConfirmEmail from './pages/EmailVerification';
-import Login from './pages/Login';
-import MultiFactorAuth from './pages/MultiFactorAuth';
-import HomePage from './pages/HomePage';
+import { createBrowserRouter, useLocation, Navigate, Outlet } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { Loader2 } from 'lucide-react';
 
-import { Navigate, Outlet } from 'react-router-dom';
+const Signup = lazy(() => import('./pages/Signup'));
+const EmailVerification = lazy(() => import('./pages/EmailVerification'));
+const Login = lazy(() => import('./pages/Login'));
+const MultiFactorAuth = lazy(() => import('./pages/MultiFactorAuth'));
+const HomePage = lazy(() => import('./pages/HomePage'));
+const AuthCallback = lazy(() => import('./components/authcallback/AuthCallback'));
+
+const Loader = () => (
+  <div className="flex justify-center items-center h-screen">
+    <Loader2 className="h-8 w-8 animate-spin" />
+  </div>
+);
 
 function AuthMiddleware({ requireAuth }: { requireAuth: boolean }) {
   const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
@@ -32,39 +37,30 @@ function AuthMiddleware({ requireAuth }: { requireAuth: boolean }) {
   return <Outlet />;
 }
 
-export const router = createBrowserRouter([
+const withSuspense = (Component: React.ComponentType) => (
+  <Suspense fallback={<Loader />}>
+    <Component />
+  </Suspense>
+);
+
+const routes = [
   {
     element: <AuthMiddleware requireAuth={false} />,
     children: [
-      {
-        path: '/',
-        element: <Signup />,
-      },
-      {
-        path: '/login',
-        element: <Login />,
-      },
-      {
-        path: '/verify',
-        element: <ConfirmEmail />,
-      },
-      {
-        path: '/mfa',
-        element: <MultiFactorAuth />,
-      },
+      { path: '/', element: withSuspense(Signup) },
+      { path: '/login', element: withSuspense(Login) },
+      { path: '/verify', element: withSuspense(EmailVerification) },
+      { path: '/mfa', element: withSuspense(MultiFactorAuth) },
     ],
   },
   {
     element: <AuthMiddleware requireAuth={true} />,
     children: [
-      {
-        path: '/home',
-        element: <HomePage />,
-      },
+      { path: '/home', element: withSuspense(HomePage) },
     ],
   },
-  {
-    path: '*',
-    element: <div>404</div>,
-  },
-]);
+  { path: '/callback', element: withSuspense(AuthCallback) },
+  { path: '*', element: <div>404 - Page Not Found</div> },
+];
+
+export const router = createBrowserRouter(routes);

@@ -1,16 +1,27 @@
 import Card from '@/components/card/CardLayout';
 import ConfirmEmailForm from '@/components/form/EmailVerificationForm';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 import { resendVerificationCode } from '@/utils/authService';
+import { useErrorHandler } from '@/utils/hooks/useErrorHandler';
 import { useLocation } from 'react-router-dom';
 
 const EmailVerificationForm = () => {
   const location = useLocation();
+  const { toast } = useToast();
+  const handleError = useErrorHandler();
 
   const email = location.state?.email;
 
-  const resendCode = () => {
-    resendVerificationCode(email);
+  const resendCode = async () => {
+    try {
+      await resendVerificationCode(email);
+      toast({
+        description: 'Please check your email for the verification code.',
+      });
+    } catch (error) {
+      handleError(error);
+    }
   };
 
   return (
