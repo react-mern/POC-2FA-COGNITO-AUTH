@@ -57,7 +57,7 @@ const MFAForm: React.FC = () => {
           <QRCode
             size={512}
             style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
-            value={`otpauth://totp/cognito:vanshita?secret=${secretCode}&issuer=Cognito`}
+            value={`otpauth://totp/cognito:cognito-auth?secret=${secretCode}&issuer=Cognito`}
             viewBox={`0 0 512 512`}
           />
         </div>
