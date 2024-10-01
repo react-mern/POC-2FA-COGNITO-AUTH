@@ -6,11 +6,8 @@ This Proof of Concept (POC) demonstrates AWS Cognito authentication flow that co
 ### Live Link : [Authentication with 2FA](https://main--aws-cognito-auth.netlify.app/)
 
 ### Demo Video
-Here’s a quick demo of the application and configuration process:
-
-[![Demo Video](https://www.loom.com/share/47919b85015b4e71a0d8ecd3431ce1ea)]
-
-Or you can watch it [here](https://www.loom.com/share/47919b85015b4e71a0d8ecd3431ce1ea).
+Here’s a quick demo of the application and configuration process:  
+[Watch the Step-by-Step Configuration Demo](https://www.loom.com/share/47919b85015b4e71a0d8ecd3431ce1ea)
 
 ## Benefits:
 
